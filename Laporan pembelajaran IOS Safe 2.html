@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Laporan Perkembangan Belajar Siswa</title>
+
+<!-- ✅ GOOGLE FONT (VALID HTML) -->
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;600&display=swap">
+
+<!-- ✅ jsPDF & AutoTable -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+*{box-sizing:border-box}
+
+body{
+  font-family:'Lexend',sans-serif;
+  background:linear-gradient(135deg,#ffe3f1,#e3f2fd,#fffde7);
+  padding:20px;
+}
+
+.container{
+  max-width:920px;
+  margin:auto;
+  background:white;
+  padding:30px;
+  border-radius:22px;
+  box-shadow:0 20px 40px rgba(0,0,0,.12);
+  position:relative;
+  overflow:hidden;
+}
+
+/* ✅ decorative only, no click blocking */
+.container::before{
+  content:"📘 🧸 ⭐ 🎨";
+  position:absolute;
+  top:12px;
+  right:18px;
+  font-size:44px;
+  pointer-events:none;
+}
+
+.page-title::before{content:"📘 "}
+.add-btn::before{content:"➕ "}
+.btn-save::before{content:"💾 "}
+
+h1{text-align:center;color:#d81b60}
+h2{margin-top:30px;color:#1976d2}
+
+.card{
+  background:#fff5fb;
+  padding:22px;
+  border-radius:18px;
+  border:2px dashed #f8bbd0;
+  margin-bottom:25px;
+}
+
+.row{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:22px;
+}
+@media(max-width:720px){
+  .row{grid-template-columns:1fr;}
+}
+
+label{font-weight:500}
+
+input,select,textarea{
+  width:100%;
+  padding:12px 14px;
+  border-radius:12px;
+  border:1px solid #ccc;
+  margin-top:6px;
+  font-family:'Lexend';
+}
+
+textarea{resize:vertical}
+
+.subject{
+  background:#e3f2fd;
+  padding:20px;
+  border-radius:18px;
+  margin-bottom:22px;
+  position:relative;
+}
+.subject::after{
+  content:"📗 🧸";
+  position:absolute;
+  top:14px;
+  right:16px;
+  font-size:26px;
+  pointer-events:none;
+}
+
+.grade-box{
+  background:#fff9c4;
+  padding:12px;
+  border-radius:12px;
+  margin-top:8px;
+}
+
+button{
+  background:#ec407a;
+  color:white;
+  border:none;
+  padding:14px 24px;
+  border-radius:14px;
+  font-size:16px;
+  cursor:pointer;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+}
+button:hover{opacity:.9}
+.add-btn{background:#42a5f5}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1 class="page-title">Laporan Perkembangan Belajar Siswa</h1>
+
+<h2>A. Informasi Umum</h2>
+<div class="card row">
+  <div>
+    <label>Nama Siswa</label>
+    <input id="namaSiswa">
+  </div>
+  <div>
+    <label>Jenjang / Program</label>
+    <select id="program">
+      <option>Pre-School</option>
+      <option>Playgroup</option>
+      <option>TK</option>
+      <option>SD</option>
+    </select>
+  </div>
+  <div>
+    <label>Nama Pengajar</label>
+    <input id="namaGuru">
+  </div>
+  <div>
+    <label>Tanggal</label>
+    <input type="date" id="tanggal">
+  </div>
+</div>
+
+<h2>B. Laporan Belajar</h2>
+<div id="subjects"></div>
+<button id="btnAddSubject" type="button" class="add-btn">
+  Tambah Mata Pelajaran
+</button>
+
+<h2>C. Kondisi Pembelajaran</h2>
+<textarea id="kondisi" rows="4"></textarea>
+
+<h2>D. Materi Selanjutnya</h2>
+<textarea id="materi" rows="4"></textarea>
+
+<br><br>
+<button id="btnDownloadPDF" type="button" class="btn-save">
+  Simpan & Download PDF
+</button>
+
+</div>
+
+<script>
+/* ===== GRADE DATA ===== */
+const gradeMap=[
+ {min:100,max:100,label:"Istimewa",desc:"Anak menguasai materi dengan sangat baik, mampu belajar mandiri dan aktif."},
+ {min:90,max:99,label:"Sangat Baik",desc:"Anak memahami materi hampir sepenuhnya, hanya perlu sedikit penguatan."},
+ {min:80,max:89,label:"Baik",desc:"Anak memahami materi inti namun masih memerlukan pendampingan pada beberapa bagian."},
+ {min:70,max:79,label:"Cukup",desc:"Anak mulai memahami materi, namun masih membutuhkan latihan tambahan."},
+ {min:60,max:69,label:"Perlu Bimbingan",desc:"Anak mengalami kesulitan memahami materi dan perlu pendekatan yang lebih intensif."}
+];
+
+function getGrade(v){
+  return gradeMap.find(g=>v>=g.min && v<=g.max);
+}
+
+/* ===== FORM DINAMIS ===== */
+function addSubject(){
+  const d=document.createElement("div");
+  d.className="subject";
+  d.innerHTML=`
+    <label>Pelajaran</label>
+    <input class="pelajaran">
+
+    <label>Nilai</label>
+    <select class="nilai" onchange="updateGrade(this)">
+      <option>60</option><option>70</option>
+      <option>80</option><option>90</option>
+      <option>100</option>
+    </select>
+
+    <div class="grade-box"></div>
+
+    <label>Yang sudah bisa</label>
+    <textarea class="eval2"></textarea>
+
+    <label>Yang perlu bantuan</label>
+    <textarea class="eval3"></textarea>
+
+    <label>Catatan Progress</label>
+    <textarea class="eval4"></textarea>
+  `;
+  document.getElementById("subjects").appendChild(d);
+  updateGrade(d.querySelector(".nilai"));
+}
+
+function updateGrade(sel){
+  const g=getGrade(parseInt(sel.value));
+  sel.nextElementSibling.innerHTML=
+    `<b>${sel.value} – ${g.label}</b><br>${g.desc}`;
+}
+
+/* ✅ INIT: pastikan B muncul */
+addSubject();
+
+/* ✅ EVENT LISTENER SAFARI iOS */
+document.getElementById("btnAddSubject")
+  .addEventListener("click", addSubject);
+
+document.getElementById("btnDownloadPDF")
+  .addEventListener("click", downloadPDF);
+
+/* ===== DOWNLOAD PDF (iOS‑SAFE) ===== */
+function downloadPDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  doc.autoTableSetDefaults({
+    theme:"striped",
+    styles:{fontSize:12,textColor:0},
+    headStyles:{fillColor:[255,200,220],textColor:0}
+  });
+
+  doc.setFontSize(16);
+  doc.text("Laporan Perkembangan Belajar Siswa",105,16,{align:"center"});
+
+  doc.setFontSize(12);
+  doc.text(`Nama Siswa : ${namaSiswa.value}`,14,28);
+  doc.text(`Nama Pengajar : ${namaGuru.value}`,14,36);
+  doc.text(`Jenjang : ${program.value}`,120,28);
+  doc.text(`Tanggal : ${tanggal.value}`,120,36);
+
+  let y=48;
+  document.querySelectorAll(".subject").forEach((s,i)=>{
+    const nilai=parseInt(s.querySelector(".nilai").value);
+    const g=getGrade(nilai);
+    doc.autoTable({
+      startY:y,
+      head:[[ `Mata Pelajaran ${i+1}`, "" ]],
+      body:[
+        ["Pelajaran",s.querySelector(".pelajaran").value],
+        ["Nilai",`${nilai} – ${g.label}`],
+        ["Deskripsi",g.desc],
+        ["Sudah Bisa",s.querySelector(".eval2").value],
+        ["Perlu Bantuan",s.querySelector(".eval3").value],
+        ["Catatan",s.querySelector(".eval4").value]
+      ]
+    });
+    y=doc.lastAutoTable.finalY+8;
+  });
+
+  doc.autoTable({ startY:y, head:[["Kondisi Pembelajaran"]], body:[[kondisi.value]] });
+  doc.autoTable({ startY:doc.lastAutoTable.finalY+8, head:[["Materi Selanjutnya"]], body:[[materi.value]] });
+
+  doc.addPage();
+  doc.text("Referensi Kategori Nilai",14,20);
+  doc.autoTable({
+    startY:30,
+    head:[["Nilai","Kategori","Deskripsi"]],
+    body:[
+      ["100","Istimewa","Anak menguasai materi dengan sangat baik, mampu belajar mandiri dan aktif."],
+      ["90–99","Sangat Baik","Anak memahami materi hampir sepenuhnya, hanya perlu sedikit penguatan."],
+      ["80–89","Baik","Anak memahami materi inti namun masih memerlukan pendampingan pada beberapa bagian."],
+      ["70–79","Cukup","Anak mulai memahami materi, namun masih membutuhkan latihan tambahan."],
+      ["60–69","Perlu Bimbingan","Anak mengalami kesulitan memahami materi dan perlu pendekatan yang lebih intensif."]
+    ]
+  });
+
+  /* ✅ SAFARI iOS: OPEN PDF */
+  const blob=doc.output("blob");
+  const url=URL.createObjectURL(blob);
+  window.open(url,"_blank");
+  setTimeout(()=>URL.revokeObjectURL(url),3000);
+}
+</script>
+
+</body>
+</html>
